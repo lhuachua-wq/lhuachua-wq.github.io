@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>TM Imagenes con Emojis</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Igual que el export de TM (imagen) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  <style>
+    body{font-family:system-ui,Arial;margin:16px}
+    #hud{display:flex;align-items:center;gap:12px;margin:8px 0}
+    #emoji{font-size:56px}
+    .pill{display:inline-block;background:#eee;border-radius:999px;padding:4px 10px;margin:3px 6px 0 0}
+  </style>
+</head>
+<body>
+  <h1>Teachable Machine – Imagen - KENER</h1>
+  <button onclick="init()">Iniciar</button>
+  <div id="hud">
+    <div id="emoji">❓</div>
+    <div>
+      <div><b>Top-1:</b> <span id="topLabel">—</span> <b>Prob:</b> <span id="topProb">—</span></div>
+      <div id="allClasses"></div>
+    </div>
+  </div>
+  <div id="webcam-container"></div>
+  <div id="label-container"></div>
+
+<script>
+  // Pega aquí la URL publicada de tu modelo de IMAGEN (termina en "/")
+  const URL = "https://teachablemachine.withgoogle.com/models/-QNAXodIq/";
+
+  let model, webcam, labelContainer, maxPredictions, classLabels = [];
+
+  // Mapa de emojis (ejemplo educativo). Ajusta a tus clases reales:
+  function emojiFor(name){
+    const k = String(name).trim();
+    if (k.includes("Joel"))     return "😁 Soy yo";
+    if (k.includes("Claudio"))      return "🐶 Es Claudio";
+    return "😄❓";
+  }
+
+  async function init() {
+    const modelURL = URL + "model.json";
+    const metadataURL = URL + "metadata.json";
+    model = await tmImage.load(modelURL, metadataURL);
+
+    // 1) Leer etiquetas de clase directamente del modelo
+    // (si tu versión no trae getClassLabels, debajo te dejo un 'plan B')
+    if (typeof model.getClassLabels === "function") {
+      classLabels = await model.getClassLabels(); // <-- aquí salen los nombres
+    } else {
+      // Plan B: leer metadata.json manualmente
+      const meta = await fetch(metadataURL).then(r=>r.json());
+      classLabels = (meta.labels || meta.classes || []).map(String);
+    }
+    console.log("Clases:", classLabels);
+
+    maxPredictions = model.getTotalClasses();
+
+    // 2) Crear webcam
+    const flip = true;
+    webcam = new tmImage.Webcam(200, 200, flip);
+    await webcam.setup();
+    await webcam.play();
+    window.requestAnimationFrame(loop);
+
+    // 3) Pegar elementos al DOM
+    document.getElementById("webcam-container").appendChild(webcam.canvas);
+    labelContainer = document.getElementById("label-container");
+    labelContainer.innerHTML = "";
+    for (let i = 0; i < maxPredictions; i++) {
+      labelContainer.appendChild(document.createElement("div"));
+    }
+
+    // 4) Mostrar lista de clases arriba (badges)
+    const all = document.getElementById("allClasses");
+    all.innerHTML = classLabels.map(n => `<span class="pill">${n}</span>`).join("");
+  }
+
+  async function loop() {
+    webcam.update();
+    await predict();
+    window.requestAnimationFrame(loop);
+  }
+
+  async function predict() {
+    const prediction = await model.predict(webcam.canvas);
+    // Mostrar todas
+    for (let i = 0; i < maxPredictions; i++) {
+      const p = prediction[i];
+      labelContainer.childNodes[i].innerHTML = `${p.className}: ${p.probability.toFixed(2)}`;
+    }
+    // Top-1
+    const top = prediction.slice().sort((a,b)=>b.probability-a.probability)[0];
+    document.getElementById("topLabel").textContent = top.className;
+    document.getElementById("topProb").textContent  = top.probability.toFixed(2);
+    document.getElementById("emoji").textContent    = emojiFor(top.className);
+  }
+</script>
+</body>
+</html>
